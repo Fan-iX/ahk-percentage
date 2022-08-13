@@ -1,4 +1,4 @@
-﻿#SingleInstance, Force
+#SingleInstance, Force
 #Persistent
 Menu, Tray, Click, ClickCount
 Menu, Tray, NoStandard
@@ -15,6 +15,9 @@ if !DllCall("GetModuleHandle", "str", "gdiplus", "UPtr")
     DllCall("LoadLibrary", "str", "gdiplus")
 VarSetCapacity(si, A_PtrSize = 8 ? 24 : 16, 0), si := Chr(1)
 DllCall("gdiplus\GdiplusStartup", A_PtrSize ? "UPtr*" : "uint*", pToken, "UPtr", &si, "UPtr", 0)
+
+DllCall("RegisterPowerSettingNotification", Ptr, A_ScriptHwnd)
+OnMessage(0x218, "SetPercentage")
 
 SetPercentage(){
     global hPercentage
