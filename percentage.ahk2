@@ -1,0 +1,94 @@
+#SingleInstance Force
+Persistent
+A_TrayMenu.ClickCount := 1
+A_TrayMenu.delete
+
+; hPercentage[AC:0~1][LightTheme:0~1][Percent:0~100]
+hPercentage := Map(0, Map(0, Map(), 1, Map()), 1, Map(0, Map(), 1, Map()))
+Percentage := 0
+if !DllCall("GetModuleHandle", "str", "gdiplus", "UPtr")
+    DllCall("LoadLibrary", "str", "gdiplus")
+si := Buffer(A_PtrSize = 8 ? 24 : 16, 0)
+NumPut("int", 1, si, 0)
+ptoken := 0
+DllCall("gdiplus\GdiplusStartup", "UPtr*", &ptoken, "UPtr", si.Ptr, "UPtr", 0)
+DllCall("RegisterPowerSettingNotification", "UPtr", A_ScriptHwnd)
+
+SetPercentage(*){
+    global hPercentage
+    global Percentage
+    global AlternatingCurrent
+    LightTheme := RegRead("HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize", "SystemUsesLightTheme")
+    powerstatus := Buffer(1+1+1+1+4+4)
+    DllCall("kernel32.dll\GetSystemPowerStatus", "uint", powerstatus.Ptr)
+    AC:=NumGet(powerstatus, "Char")
+    Percent:=NumGet(powerstatus, 2, "UChar")
+    Percent:=Min(Percent, 100)
+    
+    if(Percentage!=Percent || AC!=AlternatingCurrent){
+        Percentage:=Percent
+        AlternatingCurrent:=AC
+        hBitmap:=hPercentage[AC][LightTheme][Percent]
+        TraySetIcon("hbitmap:*" hBitmap)
+        A_IconTip := Percentage
+    }
+}
+
+CreateIcon(AC,LightTheme,Percent) {
+    Colour := AC ? 0xff008000 : LightTheme ? 0xff000000 : 0xffffffff
+    xpos := Percent == 100 ? -7 : Percent > 9 ? -5 : 5
+
+    pBitmap := 0
+    DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", 32, "int", 32, "int", 0, "int", 0x26200A, "UPtr", 0, "UPtr*", &pBitmap)
+    pGraphics := 0
+    DllCall("gdiplus\GdipGetImageGraphicsContext", "UPtr", pBitmap, "UPtr*", &pGraphics)
+
+    sString := Percent==100 ? "██" : String(Percent)
+
+    hFamily := 0
+    DllCall("gdiplus\GdipCreateFontFamilyFromName", "Str", "Microsoft YaHei UI", "uint", 0, "UPtr*", &hFamily)
+    hFont := 0
+    DllCall("gdiplus\GdipCreateFont", "UPtr", hFamily, "float", 26, "int", 1, "int", 0, "UPtr*", &hFont)
+
+    pBrush := 0
+    DllCall("gdiplus\GdipCreateSolidFill", "UPtr", Colour, "UPtr*", &pBrush)
+    DllCall("gdiplus\GdipSetTextRenderingHint", "UPtr", pGraphics, "int", 4)
+
+    RectF := Buffer(16, 0)
+    NumPut("float", xpos, RectF, 0)
+
+    DllCall("gdiplus\GdipDrawString", "UPtr", pGraphics, "Str", sString, "int", -1, "UPtr", hFont, "UPtr", RectF.Ptr, "UPtr", 0, "UPtr", pBrush)
+    DllCall("gdiplus\GdipDeleteBrush", "UPtr", pBrush)
+    DllCall("gdiplus\GdipDeleteFont", "UPtr", hFont)
+    DllCall("gdiplus\GdipDeleteFontFamily", "UPtr", hFamily)
+    hBitmap := 0
+    DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "UPtr", pBitmap, "UPtr*", &hBitmap, "int", 0xffffffff)
+    DllCall("gdiplus\GdipDisposeImage", "UPtr", pBitmap)
+    DllCall("gdiplus\GdipDeleteGraphics", "UPtr", pGraphics)
+    return hBitmap
+}
+
+for _,AC in [0,1]
+  for _,LightTheme in [0,1]
+    loop 100 {
+        hPercentage[AC][LightTheme][A_Index]:=CreateIcon(AC,LightTheme,A_Index)
+    }
+
+SetPercentage()
+
+OnMessage(0x218, SetPercentage)
+SetTimer(SetPercentage, 10000)
+
+History(*){
+    KeyHistory
+}
+
+Exit(*){
+    ExitApp
+}
+
+A_TrayMenu.Add("&Refresh", SetPercentage)
+A_TrayMenu.Add("&History", History)
+A_TrayMenu.Add()
+A_TrayMenu.Add("&Exit", Exit)
+A_TrayMenu.Default := "&Refresh"
